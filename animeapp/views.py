@@ -1,11 +1,9 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view
-from utils.mongo import MongoDB
-from bson.objectid import ObjectId
 from random import shuffle
+from .models import Anime
 
-db = MongoDB()
 
 # Create your views here.
 @api_view()
@@ -15,13 +13,20 @@ def hello_world(request):
 @api_view()
 def get_anime(request): 
     try:
-        result = db.get_many_data(db.db, "anime",{"genres": {"$in":["스포츠", '드라마']}})
+        # genres 필드가 JSONField이므로 Python 레벨에서 필터링
+        all_anime = Anime.objects.all()
+        target_genres = ["스포츠", "드라마"]
+        filtered_anime = [
+            a for a in all_anime 
+            if a.genres and any(genre in a.genres for genre in target_genres)
+        ]
+        
         anime = []
-        for a in result:
+        for a in filtered_anime:
             obj = {
-                "id":str(a['_id']), 
-                "Name": a['name'], 
-                'Image': a['image'], 
+                "id": str(a.id), 
+                "Name": a.name, 
+                'Image': a.image or '', 
             }
             anime.append(obj)
         
@@ -32,23 +37,25 @@ def get_anime(request):
         res["Access-Control-Allow-Origin"]="*"
         return res
     except Exception as e:
-        raise e
+        return Response({"error": str(e)}, status=500)
     
 @api_view(["POST"])
 def get_info(request):
     try:
         id = request.data['id']
-        result = db.get_one_data(db.db, 'anime', {"_id": ObjectId(id)})
-        anime = {
-            "name": result['name'],
-            "airYearQuarter": result['air_year_quarter'],
-            "content": result['content'],
-            "contentRating": result['content_rating'],
-            "ended": result['ended'],
-            'genres': result['genres'],
-            "tags": result['tags'],
-            "image": result['image']
+        anime = Anime.objects.get(id=id)
+        result = {
+            "name": anime.name,
+            "airYearQuarter": anime.air_year_quarter or "",
+            "content": anime.content or "",
+            "contentRating": anime.content_rating or "",
+            "ended": anime.ended,
+            'genres': anime.genres or [],
+            "tags": anime.tags or [],
+            "image": anime.image or ""
         }
-        return Response({"message": anime})
+        return Response({"message": result})
+    except Anime.DoesNotExist:
+        return Response({"error": "Anime not found"}, status=404)
     except Exception as e:
-        raise e
+        return Response({"error": str(e)}, status=500)

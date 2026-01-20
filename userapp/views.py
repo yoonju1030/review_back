@@ -1,29 +1,28 @@
 from django.shortcuts import render
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
-from utils.mongo import MongoDB
 from datetime import datetime
 from .serialize import UserSerializer
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework import status
 from django.contrib.auth import authenticate
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from .models import User
 
-db = MongoDB()
 
-@api_view(['POST'])
+@api_view(["POST"])
+@permission_classes([AllowAny])
 def check_unique_id(request):
     try:
-        id = request.data['id']
-        result = db.get_one_data(db.db, 'users', {"id": id})
-        status = False
-        if result == None: 
-            status = True
-        return Response({"result": status})
+        id = request.data["id"]
+        exists = User.objects.filter(id=id).exists()
+        return Response({"result": not exists})
     except Exception as e:
-        raise e
-    
-@api_view(['POST'])
+        return Response({"result": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
 def sign_up_user(request):
     try:
         serializer = UserSerializer(data=request.data)
@@ -50,11 +49,27 @@ def sign_up_user(request):
             res.set_cookie("refresh", refresh_token, httponly=True)
             return res
         else:
-            raise e
+            return Response(
+                {"message": "validation failed", "errors": serializer.errors, "result": False},
+                status=status.HTTP_400_BAD_REQUEST
+            )
     except Exception as e:
-        return Response({'message': "sign up fail", 'result': False})
-    
-@api_view(['POST'])
+        import traceback
+        error_detail = str(e)
+        error_type = type(e).__name__
+        return Response(
+            {
+                "message": "sign up fail",
+                "error_type": error_type,
+                "error_detail": error_detail,
+                "result": False
+            },
+            status=status.HTTP_500_INTERNAL_SERVER_ERROR
+        )
+
+
+@api_view(["POST"])
+@permission_classes([AllowAny])
 def log_in_user(request):
     try:
         user = authenticate(
@@ -86,6 +101,7 @@ def log_in_user(request):
     except Exception as e:
         raise e
 
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def test(request):
@@ -94,16 +110,16 @@ def test(request):
     except Exception as e:
         raise e
 
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def log_out_user(request):
     try:
-        response = Response({
-            "message": "Logout success"
-            }, status=status.HTTP_202_ACCEPTED)
+        response = Response(
+            {"message": "Logout success"}, status=status.HTTP_202_ACCEPTED
+        )
         response.delete_cookie("access")
         response.delete_cookie("refresh")
         return response
     except Exception as e:
         raise e
-    
