@@ -8,6 +8,10 @@ from rest_framework import status
 from django.contrib.auth import authenticate
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import User
+import logging
+
+# 앱별 로거 가져오기
+logger = logging.getLogger('userapp')
 
 
 @api_view(["POST"])
@@ -15,9 +19,13 @@ from .models import User
 def check_unique_id(request):
     try:
         id = request.data["id"]
+        logger.info(f"ID 중복 확인 요청: {id}")
         exists = User.objects.filter(id=id).exists()
-        return Response({"result": not exists})
+        result = not exists
+        logger.info(f"ID 중복 확인 결과: {id} - 사용 가능: {result}")
+        return Response({"result": result})
     except Exception as e:
+        logger.error(f"ID 중복 확인 실패: {str(e)}", exc_info=True)
         return Response({"result": False, "error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
@@ -25,9 +33,13 @@ def check_unique_id(request):
 @permission_classes([AllowAny])
 def sign_up_user(request):
     try:
+        user_id = request.data.get("id", "unknown")
+        logger.info(f"회원가입 요청: {user_id}")
+        
         serializer = UserSerializer(data=request.data)
         if serializer.is_valid():
             user = serializer.save()
+            logger.info(f"회원가입 성공: {user.id}")
 
             token = TokenObtainPairSerializer.get_token(user)
             refresh_token = str(token)
@@ -49,6 +61,7 @@ def sign_up_user(request):
             res.set_cookie("refresh", refresh_token, httponly=True)
             return res
         else:
+            logger.warning(f"회원가입 검증 실패: {user_id} - {serializer.errors}")
             return Response(
                 {"message": "validation failed", "errors": serializer.errors, "result": False},
                 status=status.HTTP_400_BAD_REQUEST
@@ -57,6 +70,7 @@ def sign_up_user(request):
         import traceback
         error_detail = str(e)
         error_type = type(e).__name__
+        logger.error(f"회원가입 실패: {error_type} - {error_detail}", exc_info=True)
         return Response(
             {
                 "message": "sign up fail",
@@ -72,10 +86,14 @@ def sign_up_user(request):
 @permission_classes([AllowAny])
 def log_in_user(request):
     try:
+        user_id = request.data.get("id", "unknown")
+        logger.info(f"로그인 시도: {user_id}")
+        
         user = authenticate(
             id=request.data.get("id"), password=request.data.get("password")
         )
         if user is not None:
+            logger.info(f"로그인 성공: {user.id}")
             serializer = UserSerializer(user)
             # jwt 토큰 접근
             token = TokenObtainPairSerializer.get_token(user)
@@ -97,8 +115,10 @@ def log_in_user(request):
             res.set_cookie("refresh", refresh_token, httponly=True)
             return res
         else:
+            logger.warning(f"로그인 실패: {user_id} - 인증 실패")
             return Response(status=status.HTTP_400_BAD_REQUEST)
     except Exception as e:
+        logger.error(f"로그인 오류: {str(e)}", exc_info=True)
         raise e
 
 
@@ -115,11 +135,16 @@ def test(request):
 @permission_classes([IsAuthenticated])
 def log_out_user(request):
     try:
+        user_id = request.user.id if hasattr(request.user, 'id') else "unknown"
+        logger.info(f"로그아웃 요청: {user_id}")
+        
         response = Response(
             {"message": "Logout success"}, status=status.HTTP_202_ACCEPTED
         )
         response.delete_cookie("access")
         response.delete_cookie("refresh")
+        logger.info(f"로그아웃 성공: {user_id}")
         return response
     except Exception as e:
+        logger.error(f"로그아웃 오류: {str(e)}", exc_info=True)
         raise e
