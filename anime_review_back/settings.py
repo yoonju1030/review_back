@@ -70,7 +70,7 @@ MIDDLEWARE = [
 ]
 
 CORS_ALLOWED_ORIGINS = [
-    "http://35.208.129.216:8080",
+    f"http://{Config.ALLOWED_HOST}:8080",
     "http://127.0.0.1:8080",
     "http://localhost:8080",
     "http://35.209.196.239",
